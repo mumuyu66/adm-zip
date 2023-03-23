@@ -17,6 +17,16 @@ const defaultOptions = {
     fs: null
 };
 
+const unZipEvents = {
+    ready: "ready",
+    end: "end",
+    finish: "finish",
+    error: "error",
+
+    extract: "extract",
+    update: "update"
+};
+
 module.exports = function (/**String*/ input, /** object */ options) {
     let inBuffer = null;
 
@@ -643,7 +653,7 @@ module.exports = function (/**String*/ input, /** object */ options) {
                 };
             }
             if (!_zip) {
-                callback(new Error(Utils.Errors.NO_ZIP));
+                callback(unZipEvents.error, new Error(Utils.Errors.NO_ZIP));
                 return;
             }
 
@@ -675,51 +685,51 @@ module.exports = function (/**String*/ input, /** object */ options) {
                     // in unix timestamp will change if files are later added to folder, but still
                     filetools.fs.utimesSync(dirPath, entry.header.time, entry.header.time);
                 } catch (er) {
-                    callback(getError("Unable to create folder", dirPath));
+                    callback(unZipEvents.error, getError("Unable to create folder", dirPath));
                 }
             }
 
-            // callback wrapper, for some house keeping
-            const done = () => {
-                if (fileEntries.size === 0) {
-                    callback();
-                }
-            };
-
+            const total = fileEntries.size
             // Extract file entries asynchronously
             for (const entry of fileEntries.values()) {
                 const entryName = pth.normalize(canonical(entry.entryName.toString()));
                 const filePath = sanitize(targetPath, entryName);
                 entry.getDataAsync(function (content, err_1) {
                     if (err_1) {
-                        callback(new Error(err_1));
+                        callback(unZipEvents.error, new Error(err_1));
                         return;
                     }
                     if (!content) {
-                        callback(new Error(Utils.Errors.CANT_EXTRACT_FILE));
+                        callback(unZipEvents.error, new Error(Utils.Errors.CANT_EXTRACT_FILE));
                     } else {
                         // The reverse operation for attr depend on method addFile()
                         const fileAttr = keepOriginalPermission ? entry.header.fileAttr : undefined;
                         filetools.writeFileToAsync(filePath, content, overwrite, fileAttr, function (succ) {
                             if (!succ) {
-                                callback(getError("Unable to write file", filePath));
+                                callback(unZipEvents.error, getError("Unable to write file", filePath));
                                 return;
                             }
                             filetools.fs.utimes(filePath, entry.header.time, entry.header.time, function (err_2) {
                                 if (err_2) {
-                                    callback(getError("Unable to set times", filePath));
+                                    callback(unZipEvents.error, getError("Unable to set times", filePath));
                                     return;
                                 }
                                 fileEntries.delete(entry);
                                 // call the callback if it was last entry
-                                done();
+                                if (fileEntries.size === 0) {
+                                    callback(unZipEvents.finish);
+                                }else{
+                                    callback(unZipEvents.update,entryName,fileEntries.size,total);
+                                }
                             });
                         });
                     }
                 });
             }
             // call the callback if fileEntries was empty
-            done();
+            if (fileEntries.size === 0) {
+                callback(unZipEvents.finish);
+            }
         },
 
         /**
