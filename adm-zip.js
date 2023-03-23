@@ -719,7 +719,7 @@ module.exports = function (/**String*/ input, /** object */ options) {
                                 if (fileEntries.size === 0) {
                                     callback(unZipEvents.finish);
                                 }else{
-                                    callback(unZipEvents.update,entryName,fileEntries.size,total);
+                                    callback(unZipEvents.update,{name:entryName,total:total,left:fileEntries.size});
                                 }
                             });
                         });
